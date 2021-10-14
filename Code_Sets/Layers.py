@@ -48,6 +48,13 @@ class Layer_Dense:
 
         self.dinputs = np.dot(dvalues, self.weights.T)
         
+    def set_parameters(self, weights, biases):
+        self.weights = weights
+        self.biases = biases
+        
+    def get_parameters(self):
+        return self.weights, self.biases
+        
 class Layer_Dropout:
     def __init__(self, rate):
         self.rate = 1 - rate
