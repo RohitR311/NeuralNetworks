@@ -1,5 +1,7 @@
-import numpy as np
+import copy
 import pickle
+
+import numpy as np
 
 from .Activation_Functions import Activation_Softmax
 from .Layers import Layer_Input
@@ -15,39 +17,64 @@ class Model:
         self.layers.append(layer)
 
     def set(self, *, loss=None, optimizer=None, accuracy=None):
-        
+
         if loss is not None:
             self.loss = loss
-            
+
         if optimizer is not None:
             self.optimizer = optimizer
-            
+
         if accuracy is not None:
             self.accuracy = accuracy
-        
+
     def get_parameters(self):
-        
+
         parameters = []
-        
+
         for layer in self.trainable_layers:
             parameters.append(layer.get_parameters())
-            
+
         return parameters
-    
+
     def set_parameters(self, parameters):
-        
+
         for parameter_set, layer in zip(parameters, self.trainable_layers):
             layer.set_parameters(*parameter_set)
-            
+
     def save_parameters(self, path):
-        
-        with open(path, 'wb') as f:
+
+        with open(path, "wb") as f:
             pickle.dump(self.get_parameters(), f)
-            
+
     def load_parameters(self, path):
-        
-        with open(path, 'rb') as f:
+
+        with open(path, "rb") as f:
             self.set_parameters(pickle.load(f))
+
+    def save(self, path):
+
+        model = copy.deepcopy(self)
+
+        model.loss.new_pass()
+        model.accuracy.new_pass()
+
+        model.input_layer.__dict__.pop("output", None)
+        model.loss.__dict__.pop("dinputs", None)
+
+        for layer in model.layers:
+            for property in ["inputs", "output", "dinputs", "dweights", "dbiases"]:
+                layer.__dict__.pop(property, None)
+
+        with open(path, "wb") as f:
+            pickle.dump(model, f)
+
+    @staticmethod
+    def load(path):
+
+        with open(path, "rb") as f:
+            model = pickle.load(f)
+
+        return model
 
     def finalize(self):
         self.input_layer = Layer_Input()
@@ -71,7 +98,7 @@ class Model:
 
             if hasattr(self.layers[i], "weights"):
                 self.trainable_layers.append(self.layers[i])
-                
+
         if self.loss is not None:
             self.loss.remember_trainable_layers(self.trainable_layers)
 
@@ -106,17 +133,17 @@ class Model:
 
         for layer in reversed(self.layers):
             layer.backward(layer.next.dinputs)
-            
+
     def evaluate(self, X_val, y_val, *, batch_size=None):
-        
+
         validation_steps = 1
-        
+
         if batch_size is not None:
             validation_steps = len(X_val) // batch_size
 
             if validation_steps * batch_size < len(X_val):
                 validation_steps += 1
-                
+
         self.loss.new_pass()
         self.accuracy.new_pass()
 
@@ -141,8 +168,34 @@ class Model:
         validation_loss = self.loss.calculate_accumulated()
         validation_accuracy = self.accuracy.calculate_accumulated()
 
-        print(f"validation, acc: {validation_accuracy:.3f}, loss: {validation_loss:.3f}")
-        
+        print(
+            f"validation, acc: {validation_accuracy:.3f}, loss: {validation_loss:.3f}"
+        )
+
+    def predict(self, X, *, batch_size=None):
+
+        prediction_steps = 1
+
+        if batch_size is not None:
+            prediction_steps = len(X) // batch_size
+
+            if prediction_steps * batch_size < len(X):
+                prediction_steps += 1
+
+        output = []
+
+        for step in range(prediction_steps):
+
+            if batch_size is None:
+                batch_X = X
+            else:
+                batch_X = X[step * batch_size : (step + 1) * batch_size]
+
+            batch_output = self.forward(batch_X, training=False)
+
+            output.append(batch_output)
+
+        return np.vstack(output)
 
     def train(
         self, X, y, *, epochs=1, batch_size=None, print_every=1, validation_data=None
